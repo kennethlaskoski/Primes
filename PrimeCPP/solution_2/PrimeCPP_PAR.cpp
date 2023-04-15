@@ -16,7 +16,6 @@
 #include <memory>
 
 #define USE_BLOCKS 1
-#define MIN_BLOCK  16384UL
 
 using namespace std;
 using namespace std::chrono;
@@ -61,26 +60,28 @@ public:
 #if USE_BLOCKS
     void setFlagsFalse(size_t n, size_t skip) 
     {
-        const auto maxthreads = thread::hardware_concurrency();
-        auto blocksize = min(n / maxthreads, MIN_BLOCK);
-        vector<thread> threads;
-
-        for (int i = 0; i < blocksize; i++)
+        if (n > arrSize)
+            return;
+            
+        const size_t maxthreads = thread::hardware_concurrency();             // 4
+        const size_t sievespace = arrSize - n;                                // 91
+        size_t blocksize  = (sievespace + maxthreads - 1) / maxthreads; // 23                
+        blocksize = ((blocksize + skip - 1) / skip) * skip;
+        //printf("n: %zu, skip: %zu, maxthreads: %zu, sievespace: %zu, blocksize: %zu\n", n, skip, maxthreads, sievespace, blocksize);
+        
+        for (size_t ib = 0; ib < maxthreads; ib++)
         {
-            threads.push_back( thread([this](size_t start, size_t end, size_t skip)
+            size_t blockstart = n + ib * blocksize;
+            size_t blockend   = min(arrSize, blockstart + blocksize);
+            
+            //printf("blockstart: %zu, blockend: %zu\n", blockstart, blockend);
+            for (size_t i = blockstart; i < blockend; i += skip)   
             {
-                auto n = ((start + skip - 1) / skip) * skip;                // Next aligned element within this block
-                auto rolling_mask = ~uint32_t(1 << n % 32);
-                auto roll_bits = skip % 32;
-                while (n < end) {
-                    array[index(n)] &= rolling_mask;
-                    n += skip;
-                    rolling_mask = rol(rolling_mask, roll_bits);
-                }
-            }, i * blocksize, min(arrSize, i * blocksize + blocksize), skip));
+                //printf("%zu, ", i);
+                array[i/32] &= ~(1U << i % 32);
+            }
+            puts("");
         }
-        for (auto & thread: threads)
-            thread.join();
     }
 #else
     void setFlagsFalse(size_t n, size_t skip) 
