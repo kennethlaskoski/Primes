@@ -63,25 +63,30 @@ public:
         if (n > arrSize)
             return;
             
-        const size_t maxthreads = thread::hardware_concurrency();             // 4
-        const size_t sievespace = arrSize - n;                                // 91
-        size_t blocksize  = (sievespace + maxthreads - 1) / maxthreads; // 23                
+        const size_t maxthreads = thread::hardware_concurrency();             
+        const size_t sievespace = arrSize - n;                                
+        size_t blocksize = (sievespace + maxthreads - 1) / maxthreads;                
         blocksize = ((blocksize + skip - 1) / skip) * skip;
-        //printf("n: %zu, skip: %zu, maxthreads: %zu, sievespace: %zu, blocksize: %zu\n", n, skip, maxthreads, sievespace, blocksize);
-        
+        vector<thread> threads;        
         for (size_t ib = 0; ib < maxthreads; ib++)
         {
             size_t blockstart = n + ib * blocksize;
             size_t blockend   = min(arrSize, blockstart + blocksize);
             
-            //printf("blockstart: %zu, blockend: %zu\n", blockstart, blockend);
-            for (size_t i = blockstart; i < blockend; i += skip)   
+            threads.push_back( std::thread([&bits = array](size_t start, size_t end, size_t step)
             {
-                //printf("%zu, ", i);
-                array[i/32] &= ~(1U << i % 32);
-            }
-            puts("");
+                auto rolling_mask = ~uint32_t(1 << start % 32);
+                auto roll_bits = step % 32;
+
+                for (size_t i = start; i < end; i += step)   
+                {
+                    bits[index(i)] &= rolling_mask;
+                    rolling_mask = rol(rolling_mask, roll_bits);
+                }
+            }, blockstart, blockend, skip));
         }
+        for (auto& thread: threads)
+            thread.join();
     }
 #else
     void setFlagsFalse(size_t n, size_t skip) 

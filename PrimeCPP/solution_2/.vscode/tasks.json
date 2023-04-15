@@ -16,7 +16,7 @@
                 "primes_par.exe"
             ],
             "group": {
-                "kind": "build",
+                "kind": "test",
                 "isDefault": true
             },
             "presentation": {
