@@ -15,7 +15,7 @@
 #include <thread>
 #include <memory>
 
-#define USE_BLOCKS 1
+#define USE_BLOCKS 0
 
 using namespace std;
 using namespace std::chrono;
@@ -57,8 +57,7 @@ public:
         return (x<<n) | (x>>(32-n));
     }
 
-#if USE_BLOCKS
-    void setFlagsFalse(size_t n, size_t skip) 
+    void setFlagsFalseBlocks(size_t n, size_t skip) 
     {
         if (n > arrSize)
             return;
@@ -88,7 +87,7 @@ public:
         for (auto& thread: threads)
             thread.join();
     }
-#else
+
     void setFlagsFalse(size_t n, size_t skip) 
     {
         auto rolling_mask = ~uint32_t(1 << n % 32);
@@ -99,7 +98,6 @@ public:
             rolling_mask = rol(rolling_mask, roll_bits);
         }
     }
-#endif
 
     inline size_t size() const {return arrSize;}
 };
@@ -115,10 +113,13 @@ class prime_sieve
   private:
 
       BitArray Bits;                                        // Sieve data, where 1==prime, 0==not
+      bool     BlockMode;
 
    public:
 
-      prime_sieve(uint64_t n) : Bits(n)                     // Initialize all to true (potential primes)
+      prime_sieve(uint64_t n, bool blockMode = false) 
+        : Bits(n),                     // Initialize all to true (potential primes)
+          BlockMode(blockMode)
       {
       }
 
@@ -146,7 +147,10 @@ class prime_sieve
                       break;
                   }
               }
-              Bits.setFlagsFalse(factor * factor, factor + factor);
+              if (BlockMode)
+                Bits.setFlagsFalseBlocks(factor * factor, factor + factor);
+              else
+                Bits.setFlagsFalse(factor * factor, factor + factor);
 
               factor += 2;            
           }
@@ -250,14 +254,19 @@ int main(int argc, char **argv)
     auto bPrintPrimes      = false;
     auto bOneshot          = false;
     auto bQuiet            = false;
+    auto bBlockMode        = false;
 
     // Process command-line args
 
     for (auto i = args.begin(); i != args.end(); ++i) 
     {
         if (*i == "-h" || *i == "--help") {
-              cout << "Syntax: " << argv[0] << " [-t,--threads threads] [-s,--seconds seconds] [-l,--limit limit] [-1,--oneshot] [-q,--quiet] [-h] " << endl;
+              cout << "Syntax: " << argv[0] << " [-b,--blockmode] [-t,--threads threads] [-s,--seconds seconds] [-l,--limit limit] [-1,--oneshot] [-q,--quiet] [-h] " << endl;
             return 0;
+        }
+        else if (*i == "-b" || *i == "--blockmode") 
+        {
+            bBlockMode = true;
         }
         else if (*i == "-t" || *i == "--threads") 
         {
@@ -300,6 +309,8 @@ int main(int argc, char **argv)
         cout << "-------------------------------------------------------------------------" << endl;
     }
 
+    if (bBlockMode)
+        cout << "Block mode enabled." << endl;
     if (bOneshot)
         cout << "Oneshot is on.  A single pass will be used to simulate a 5 second run." << endl;
 
@@ -329,7 +340,7 @@ int main(int argc, char **argv)
     if (bOneshot)
     {
         auto tStart       = steady_clock::now();
-        prime_sieve(llUpperLimit).runSieve();
+        prime_sieve(llUpperLimit, bBlockMode).runSieve();
         auto tEnd = steady_clock::now() - tStart;
         duration = duration_cast<microseconds>(tEnd).count()/1000000.0;
     }
@@ -339,11 +350,11 @@ int main(int argc, char **argv)
         std::thread threads[cThreads];
         uint64_t l_passes[cThreads];
         for (unsigned int i = 0; i < cThreads; i++)
-            threads[i] = std::thread([i, &l_passes, &tStart](size_t llUpperLimit)
+            threads[i] = std::thread([i, &l_passes, &tStart, bBlockMode](size_t llUpperLimit)
             {
                 l_passes[i] = 0;
                 while (duration_cast<seconds>(steady_clock::now() - tStart).count() < 5) {
-                    prime_sieve(llUpperLimit).runSieve();
+                    prime_sieve(llUpperLimit, bBlockMode).runSieve();
                     ++l_passes[i];
                 }
             }, llUpperLimit);
@@ -354,7 +365,6 @@ int main(int argc, char **argv)
         auto tEnd = steady_clock::now() - tStart;
         duration = duration_cast<microseconds>(tEnd).count()/1000000.0;
     }
-
 
     if (bOneshot)
     {
