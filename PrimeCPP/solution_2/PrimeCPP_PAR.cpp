@@ -15,8 +15,6 @@
 #include <thread>
 #include <memory>
 
-#define USE_BLOCKS 0
-
 using namespace std;
 using namespace std::chrono;
 
