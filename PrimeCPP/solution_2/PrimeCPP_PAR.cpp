@@ -66,13 +66,13 @@ public:
         const size_t sievespace = arrSize - n;                                
         size_t blocksize = (sievespace + maxthreads - 1) / maxthreads;                
         blocksize = ((blocksize + skip - 1) / skip) * skip;
-        vector<thread> threads;        
+   
         for (size_t ib = 0; ib < maxthreads; ib++)
         {
             size_t blockstart = n + ib * blocksize;
             size_t blockend   = min(arrSize, blockstart + blocksize);
             
-            threads.push_back( std::thread([&bits = array](size_t start, size_t end, size_t step)
+            std::thread([&bits = array](size_t start, size_t end, size_t step)
             {
                 auto rolling_mask = ~uint32_t(1 << start % 32);
                 auto roll_bits = step % 32;
@@ -82,10 +82,8 @@ public:
                     bits[index(i)] &= rolling_mask;
                     rolling_mask = rol(rolling_mask, roll_bits);
                 }
-            }, blockstart, blockend, skip));
+            }, blockstart, blockend, skip).detach();
         }
-        for (auto& thread: threads)
-            thread.join();
     }
 
     void setFlagsFalse(size_t n, size_t skip) 
