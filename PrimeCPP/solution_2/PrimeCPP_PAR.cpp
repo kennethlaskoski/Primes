@@ -55,33 +55,49 @@ public:
         return (x<<n) | (x>>(32-n));
     }
 
+    #define MINBLOCK 10000      // Apparent break-even point from experimentatiom
+
     void setFlagsFalseBlocks(size_t n, size_t skip) 
     {
         if (n > arrSize)
             return;
-            
+        
+        // Calc how many opertions (steps) we will be peforming (ie: how many bits to clear)    
         const size_t maxthreads = thread::hardware_concurrency();             
         const size_t sievespace = arrSize - n;                                
-        size_t blocksize = (sievespace + maxthreads - 1) / maxthreads;                
+        const size_t steps = sievespace / skip;
+        
+        // Limit the thread count so that blocks are at least MINBLOCK steps
+        size_t threadcount = max(1UL, min(maxthreads,(size_t)(steps / MINBLOCK)));
+        size_t blocksize = (sievespace + threadcount - 1) / threadcount;                
         blocksize = ((blocksize + skip - 1) / skip) * skip;
-   
-        for (size_t ib = 0; ib < maxthreads; ib++)
+        
+        // Run multiple threads to clear bits in parallel        
+        vector<std::thread> threads;
+        for (size_t ib = 0; ib < threadcount; ib++)
         {
             size_t blockstart = n + ib * blocksize;
             size_t blockend   = min(arrSize, blockstart + blocksize);
             
-            std::thread([&bits = array](size_t start, size_t end, size_t step)
-            {
-                auto rolling_mask = ~uint32_t(1 << start % 32);
-                auto roll_bits = step % 32;
-
-                for (size_t i = start; i < end; i += step)   
+            threads.push_back(
+                std::thread([&bits = array](size_t start, size_t end, size_t step)
                 {
-                    bits[index(i)] &= rolling_mask;
-                    rolling_mask = rol(rolling_mask, roll_bits);
-                }
-            }, blockstart, blockend, skip).detach();
+                    auto rolling_mask = ~uint32_t(1 << start % 32);
+                    auto roll_bits = step % 32;
+
+                    for (size_t i = start; i < end; i += step)   
+                    {
+                        bits[index(i)] &= rolling_mask;
+                        rolling_mask = rol(rolling_mask, roll_bits);
+                    }
+                }, blockstart, blockend, skip)
+            );
         }
+        
+        // Wait for them all to finish, so that none are left working with a stale sieve after it is cleaned up
+        for (auto & t: threads)
+            t.join();
+
     }
 
     void setFlagsFalse(size_t n, size_t skip) 
